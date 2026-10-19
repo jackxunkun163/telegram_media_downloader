@@ -1,6 +1,5 @@
 """util format"""
 
-import math
 import os
 import re
 import unicodedata
@@ -20,44 +19,42 @@ class Link:
     topic_id: Optional[int] = None
 
 
-def format_byte(size: float, dot=2):
-    """format byte"""
+_SIZE_UNITS = (
+    ("B", 1024**0),
+    ("KB", 1024**1),
+    ("MB", 1024**2),
+    ("GB", 1024**3),
+    ("TB", 1024**4),
+    ("PB", 1024**5),
+    ("EB", 1024**6),
+    ("ZB", 1024**7),
+    ("YB", 1024**8),
+    ("BB", 1024**9),
+    ("NB", 1024**10),
+    ("DB", 1024**11),
+    ("CB", 1024**12),
+)
 
-    # pylint: disable = R0912
-    if 0 <= size < 1:
-        human_size = str(round(size / 0.125, dot)) + "b"
-    elif 1 <= size < 1024:
-        human_size = str(round(size, dot)) + "B"
-    elif math.pow(1024, 1) <= size < math.pow(1024, 2):
-        human_size = str(round(size / math.pow(1024, 1), dot)) + "KB"
-    elif math.pow(1024, 2) <= size < math.pow(1024, 3):
-        human_size = str(round(size / math.pow(1024, 2), dot)) + "MB"
-    elif math.pow(1024, 3) <= size < math.pow(1024, 4):
-        human_size = str(round(size / math.pow(1024, 3), dot)) + "GB"
-    elif math.pow(1024, 4) <= size < math.pow(1024, 5):
-        human_size = str(round(size / math.pow(1024, 4), dot)) + "TB"
-    elif math.pow(1024, 5) <= size < math.pow(1024, 6):
-        human_size = str(round(size / math.pow(1024, 5), dot)) + "PB"
-    elif math.pow(1024, 6) <= size < math.pow(1024, 7):
-        human_size = str(round(size / math.pow(1024, 6), dot)) + "EB"
-    elif math.pow(1024, 7) <= size < math.pow(1024, 8):
-        human_size = str(round(size / math.pow(1024, 7), dot)) + "ZB"
-    elif math.pow(1024, 8) <= size < math.pow(1024, 9):
-        human_size = str(round(size / math.pow(1024, 8), dot)) + "YB"
-    elif math.pow(1024, 9) <= size < math.pow(1024, 10):
-        human_size = str(round(size / math.pow(1024, 9), dot)) + "BB"
-    elif math.pow(1024, 10) <= size < math.pow(1024, 11):
-        human_size = str(round(size / math.pow(1024, 10), dot)) + "NB"
-    elif math.pow(1024, 11) <= size < math.pow(1024, 12):
-        human_size = str(round(size / math.pow(1024, 11), dot)) + "DB"
-    elif math.pow(1024, 12) <= size:
-        human_size = str(round(size / math.pow(1024, 12), dot)) + "CB"
-    else:
+
+def format_byte(size: float, dot=2):
+    """format byte
+
+    Sizes below 1 byte are shown in bits ("b"), anything larger uses the
+    biggest unit that keeps the value under 1024.
+    """
+    if size < 0:
         raise ValueError(
-            f'format_byte() takes number than or equal to 0, " \
-            " but less than 0 given. {size}'
+            f"format_byte() takes number greater than or equal to 0, but {size} given."
         )
-    return human_size
+
+    if size < 1:
+        return str(round(size / 0.125, dot)) + "b"
+
+    for suffix, unit in _SIZE_UNITS:
+        if size < unit * 1024 or suffix == "CB":
+            # keep plain bytes as int so format_byte(1) stays "1B"
+            value = round(size, dot) if unit == 1 else round(size / unit, dot)
+            return str(value) + suffix
 
 
 class SearchDateTimeResult:
@@ -164,6 +161,8 @@ def replace_date_time(text: str, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
 
 _BYTE_UNIT = ["B", "KB", "MB", "GB", "TB"]
 
+_BYTE_UNIT_VALUE = {unit: 1024**i for i, unit in enumerate(_BYTE_UNIT)}
+
 
 def get_byte_from_str(byte_str: str) -> Optional[int]:
     """Get byte from str
@@ -180,14 +179,7 @@ def get_byte_from_str(byte_str: str) -> Optional[int]:
     """
     search_res = re.match(r"(\d{1,})(B|KB|MB|GB|TB)", byte_str)
     if search_res:
-        unit_str = search_res.group(2)
-        unit: int = 1
-        for it in _BYTE_UNIT:
-            if it == unit_str:
-                break
-            unit *= 1024
-
-        return int(search_res.group(1)) * unit
+        return int(search_res.group(1)) * _BYTE_UNIT_VALUE[search_res.group(2)]
 
     return None
 

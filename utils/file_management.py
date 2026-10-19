@@ -4,6 +4,17 @@ import os
 import pathlib
 from hashlib import md5
 
+_CHUNK_SIZE = 1024 * 1024
+
+
+def _file_md5(file_path: str) -> str:
+    """Compute the md5 hash of a file without loading it fully into memory."""
+    hash_md5 = md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(_CHUNK_SIZE), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
 
 def get_next_name(file_path: str) -> str:
     """
@@ -60,7 +71,7 @@ def manage_duplicate_file(file_path: str):
     """
     # pylint: disable = R1732
     posix_path = pathlib.Path(file_path)
-    file_base_name: str = "".join(posix_path.stem.split("-copy")[0])
+    file_base_name: str = posix_path.stem.split("-copy")[0]
     name_pattern: str = f"{posix_path.parent}/{file_base_name}*"
     # Reason for using `str.translate()`
     # https://stackoverflow.com/q/22055500/6730439
@@ -69,10 +80,9 @@ def manage_duplicate_file(file_path: str):
     )
     if file_path in old_files:
         old_files.remove(file_path)
-    current_file_md5: str = md5(open(file_path, "rb").read()).hexdigest()
+    current_file_md5: str = _file_md5(file_path)
     for old_file_path in old_files:
-        old_file_md5: str = md5(open(old_file_path, "rb").read()).hexdigest()
-        if current_file_md5 == old_file_md5:
+        if current_file_md5 == _file_md5(old_file_path):
             os.remove(file_path)
             return old_file_path
     return file_path
