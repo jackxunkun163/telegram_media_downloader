@@ -413,7 +413,10 @@ async def download_media(
             if _can_download(_type, file_formats, file_format):
                 if _is_exist(file_name):
                     file_size = os.path.getsize(file_name)
-                    if file_size or file_size == media_size:
+                    # Skip only when the existing file matches the expected
+                    # size (or the expected size is unknown but we have data);
+                    # a partial file must be downloaded again.
+                    if file_size == media_size or (file_size and not media_size):
                         logger.info(
                             f"id={message.id} {ui_file_name} "
                             f"{_t('already download,download skipped')}.\n"
@@ -470,9 +473,13 @@ async def download_media(
                     f"{_t('file reference expired for 3 retries, download skipped.')}"
                 )
         except pyrogram.errors.exceptions.flood_420.FloodWait as wait_err:
+            logger.warning(f"Message[{message.id}]: FloodWait {wait_err.value}")
             await asyncio.sleep(wait_err.value)
-            logger.warning("Message[{}]: FlowWait {}", message.id, wait_err.value)
-            _check_timeout(retry, message.id)
+            if _check_timeout(retry, message.id):
+                logger.error(
+                    f"Message[{message.id}]: "
+                    f"{_t('Timing out after 3 reties, download skipped.')}"
+                )
         except TypeError:
             # pylint: disable = C0301
             logger.warning(

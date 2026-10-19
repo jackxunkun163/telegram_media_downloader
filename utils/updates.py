@@ -48,15 +48,13 @@ def get_latest_release(proxy_config: dict = None) -> dict:
             proxies=proxies,
             timeout=60,
         )
+        response.raise_for_status()
+        latest_release: dict = json.loads(response.text)
 
+        if f"v{__version__}" != latest_release["tag_name"]:
+            return latest_release
     except Exception as e:
         logger.warning(f"{e}")
-        return {}
-
-    latest_release: dict = json.loads(response.text)
-
-    if f"v{__version__}" != latest_release["tag_name"]:
-        return latest_release
 
     return {}
 
