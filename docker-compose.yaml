@@ -2,6 +2,9 @@ version: "3.3"
 
 services:
   telegram_media_downloader:
+    # Upstream image. To run your own fork build (auto-built by
+    # .github/workflows/docker-publish-ghcr.yml on every push to master), use:
+    #   image: ghcr.io/jackxunkun163/telegram_media_downloader:latest
     image: tangyoha/telegram_media_downloader:latest
     build: .
     ports:
@@ -23,7 +26,17 @@ services:
       - "./log/:/app/log/"
       - "./sessions/:/app/sessions"
       - "./temp/:/app/temp"
-    #restart: "unless-stopped"
-# volumes:
-#   sessions:
-#   temp:
+
+    # Auto-restart after crashes or OOM kills; without this a dead process
+    # leaves the container stopped until manually restarted.
+    restart: unless-stopped
+
+    # Liveness probe against the built-in web port (matches web_port in
+    # config.yaml, default 5000). Docker marks the container unhealthy and
+    # restarts it when the process stops answering.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/healthz"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 1m
