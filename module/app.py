@@ -22,6 +22,10 @@ from utils.meta_data import MetaData
 _yaml = yaml.YAML()
 # pylint: disable = R0902
 
+# Media-group captions are only useful while the group is being processed;
+# bound the caches so long-running instances do not grow them forever.
+_MAX_CAPTION_CACHE_PER_CHAT = 10000
+
 
 class DownloadStatus(Enum):
     """Download status"""
@@ -950,6 +954,14 @@ class Application:
 
         return False
 
+    @staticmethod
+    def _bounded_map_set(mapping: dict, key, sub_key, value):
+        """Set mapping[key][sub_key]=value, evicting the oldest entry on overflow."""
+        sub = mapping.setdefault(key, {})
+        sub[sub_key] = value
+        if len(sub) > _MAX_CAPTION_CACHE_PER_CHAT:
+            del sub[next(iter(sub))]
+
     def set_caption_name(
         self, chat_id: Union[int, str], media_group_id: Optional[str], caption: str
     ):
@@ -969,10 +981,7 @@ class Application:
         if not media_group_id:
             return
 
-        if chat_id in self.caption_name_dict:
-            self.caption_name_dict[chat_id][media_group_id] = caption
-        else:
-            self.caption_name_dict[chat_id] = {media_group_id: caption}
+        self._bounded_map_set(self.caption_name_dict, chat_id, media_group_id, caption)
 
     def get_caption_name(
         self, chat_id: Union[int, str], media_group_id: Optional[str]
@@ -1003,10 +1012,9 @@ class Application:
         if not media_group_id:
             return
 
-        if chat_id in self.caption_entities_dict:
-            self.caption_entities_dict[chat_id][media_group_id] = caption_entities
-        else:
-            self.caption_entities_dict[chat_id] = {media_group_id: caption_entities}
+        self._bounded_map_set(
+            self.caption_entities_dict, chat_id, media_group_id, caption_entities
+        )
 
     def get_caption_entities(
         self, chat_id: Union[int, str], media_group_id: Optional[str]

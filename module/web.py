@@ -66,7 +66,11 @@ def run_web_server(app: Application):
     """
 
     get_flask_app().run(
-        app.web_host, app.web_port, debug=app.debug_web, use_reloader=False
+        app.web_host,
+        app.web_port,
+        debug=app.debug_web,
+        use_reloader=False,
+        threaded=True,
     )
 
 
@@ -90,7 +94,10 @@ def init_web(app: Application):
         threading.Thread(target=run_web_server, args=(app,)).start()
     else:
         threading.Thread(
-            target=get_flask_app().run, daemon=True, args=(app.web_host, app.web_port)
+            target=get_flask_app().run,
+            daemon=True,
+            args=(app.web_host, app.web_port),
+            kwargs={"threaded": True},
         ).start()
 
 
@@ -171,6 +178,12 @@ def web_set_download_state():
     return state
 
 
+@_flask_app.route("/healthz")
+def healthz():
+    """Liveness probe for container healthchecks (no login required)."""
+    return "ok"
+
+
 @_flask_app.route("/get_app_version")
 def get_app_version():
     """Get telegram_media_downloader version"""
@@ -186,10 +199,11 @@ def get_download_list():
 
     already_down = request.args.get("already_down") == "true"
 
-    download_result = get_download_result()
+    # iterate over a snapshot: the asyncio loop mutates this map concurrently
+    download_result = list(get_download_result().items())
     result = "["
-    for chat_id, messages in download_result.items():
-        for idx, value in messages.items():
+    for chat_id, messages in download_result:
+        for idx, value in list(messages.items()):
             is_already_down = value["down_byte"] == value["total_size"]
 
             if already_down and not is_already_down:

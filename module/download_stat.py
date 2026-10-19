@@ -3,6 +3,7 @@ import asyncio
 import time
 from enum import Enum
 
+from loguru import logger
 from pyrogram import Client
 
 from module.app import TaskNode
@@ -20,6 +21,11 @@ _total_download_speed: int = 0
 _total_download_size: int = 0
 _last_download_time: float = time.time()
 _download_state: DownloadState = DownloadState.Downloading
+_last_pause_log_time: float = 0.0
+
+# Finished entries are only kept for the web UI download list; bound their
+# number so long-running instances do not grow `_download_result` forever.
+_MAX_FINISHED_PER_CHAT = 1000
 
 
 def get_download_result() -> dict:
@@ -44,6 +50,25 @@ def set_download_state(state: DownloadState):
     _download_state = state
 
 
+def _trim_finished_entries(chat_id) -> None:
+    """Drop the oldest finished entries so the per-chat map stays bounded."""
+    messages = _download_result.get(chat_id)
+    if not messages:
+        return
+
+    overflow = len(messages) - _MAX_FINISHED_PER_CHAT
+    if overflow <= 0:
+        return
+
+    for message_id in list(messages.keys()):
+        if overflow <= 0:
+            break
+        stat = messages[message_id]
+        if stat.get("down_byte") == stat.get("total_size"):
+            del messages[message_id]
+            overflow -= 1
+
+
 async def update_download_status(
     down_byte: int,
     total_size: int,
@@ -59,6 +84,7 @@ async def update_download_status(
     global _total_download_speed
     global _total_download_size
     global _last_download_time
+    global _last_pause_log_time
 
     if node.is_stop_transmission:
         client.stop_transmission()
@@ -68,6 +94,12 @@ async def update_download_status(
     while get_download_state() == DownloadState.StopDownload:
         if node.is_stop_transmission:
             client.stop_transmission()
+        now = time.time()
+        if now - _last_pause_log_time > 300:
+            logger.info(
+                "Downloads are paused from the web UI; waiting for resume..."
+            )
+            _last_pause_log_time = now
         await asyncio.sleep(1)
 
     if not _download_result.get(chat_id):
@@ -111,6 +143,7 @@ async def update_download_status(
             "task_id": node.task_id,
         }
         _total_download_size += down_byte
+        _trim_finished_entries(chat_id)
 
     if cur_time - _last_download_time >= 1.0:
         # update speed
